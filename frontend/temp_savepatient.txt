@@ -1,0 +1,3099 @@
+window.savePatient = async function () {
+
+  const name =
+    document.getElementById(
+      'patient-name'
+    ).value;
+
+  const mobile =
+    document.getElementById(
+      'patient-mobile'
+    ).value;
+
+  const email =
+    document.getElementById(
+      'patient-email'
+    ).value;
+
+  const age =
+    document.getElementById(
+      'patient-age'
+    ).value;
+
+  const gender =
+    document.getElementById(
+      'patient-gender'
+    ).value;
+
+  const doctorId = localStorage.getItem('doctor_id');
+
+  try {
+
+    const response =
+      await fetch(
+        'http://127.0.0.1:5000/add_patient',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type':
+              'application/json'
+          },
+          body: JSON.stringify({
+            name,
+            mobile,
+            email,
+            age,
+            gender,
+            doctor_id: doctorId
+          })
+        }
+      );
+
+    const result =
+      await response.json();
+
+    if (result.success || result.exists) {
+
+      const patientId = result.patient_id;
+      const patientCode = result.patient_code;
+
+      localStorage.setItem('patient_id', patientId);
+      localStorage.setItem('patient_code', patientCode);
+
+      const pendingScore = localStorage.getItem('pending_score');
+      const pendingSeverity = localStorage.getItem('pending_severity');
+
+      if (pendingScore !== null && pendingScore !== undefined) {
+        try {
+          const reportResp = await fetch('http://127.0.0.1:5000/save_report', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              patient_id: patientId,
+              doctor_id: doctorId,
+              score: Number(pendingScore),
+              severity: pendingSeverity
+            })
+          });
+          const reportResult = await reportResp.json();
+          if (reportResult.success) {
+            localStorage.removeItem('pending_score');
+            localStorage.removeItem('pending_severity');
+            document.getElementById('patient-msg').textContent = 'Patient and pending report saved!';
+            alert('Patient registered and analysis report saved successfully!');
+            setTimeout(() => {
+              navigateTo('results');
+            }, 1000);
+            return;
+          }
+        } catch (e) {
+          console.error('Failed to save pending report:', e);
+        }
+      }
+
+      document.getElementById('patient-msg').textContent = 
+        result.exists ? `Patient already exists (${patientCode})` : 'Patient Saved Successfully';
+
+      setTimeout(() => {
+        navigateTo('analysis');
+      }, 1000);
+
+    } else {
+      document.getElementById('patient-msg').textContent = result.message || 'Failed to save patient';
+    }
+
+  } catch {
+
+    document.getElementById(
+      'patient-msg'
+    ).textContent =
+      'Failed to save patient';
+  }
+};
+
+
+async function loadPatients() {
+
+  try {
+
+    const doctorId = localStorage.getItem('doctor_id');
+    const response =
+      await fetch(
+        `http://127.0.0.1:5000/patients?doctor_id=${doctorId}`
+      );
+
+    const patients =
+      await response.json();
+
+    let html = `
+      <table
+        id="patients-table"
+        style="
+          width:100%;
+          border-collapse:collapse;
+          overflow:hidden;
+          border-radius:12px;
+        "
+      >
+
+        <thead>
+
+          <tr
+            style="
+              border-bottom:1px solid rgba(0,0,0,0.22);
+            "
+          >
+
+            <th style="padding:16px;">
+              Patient ID
+            </th>
+
+            <th style="padding:16px;">
+              Name
+            </th>
+
+            <th style="padding:16px;">
+              Mobile
+            </th>
+
+            <th style="padding:16px;">
+              Action
+            </th>
+
+          </tr>
+
+        </thead>
+
+        <tbody>
+    `;
+
+    patients.forEach(patient => {
+
+      html += `
+
+        <tr
+          style="
+            border-bottom:1px solid rgba(0,0,0,0.15);
+            transition:.3s;
+          "
+          onmouseover="
+            this.style.background='rgba(13,148,136,.08)'
+          "
+          onmouseout="
+            this.style.background='transparent'
+          "
+        >
+
+          <td style="padding:16px;">
+            ${patient.patient_code}
+          </td>
+
+          <td style="padding:16px;">
+            ${patient.name}
+          </td>
+
+          <td style="padding:16px;">
+            ${patient.mobile}
+          </td>
+
+          <td style="padding:16px;">
+
+            <button
+              onclick="viewReports(${patient.id})"
+              style="
+                background:linear-gradient(
+                  135deg,
+                  #0d9488,
+                  #00bfff
+                );
+                box-shadow:
+                  0 0 15px rgba(13,148,136,.35);
+                border:none;
+                color:#000;
+                font-weight:600;
+                padding:8px 14px;
+                border-radius:8px;
+                cursor:pointer;
+              "
+            >
+              View Reports
+            </button>
+
+          </td>
+
+        </tr>
+
+      `;
+    });
+
+    html += `
+        </tbody>
+      </table>
+    `;
+
+    document.getElementById(
+      'patients-list'
+    ).innerHTML = html;
+
+  }
+
+  catch {
+
+    document.getElementById(
+      'patients-list'
+    ).innerHTML =
+      'Failed to load patients';
+  }
+}
+
+
+function renderReportCenter() {
+
+  document.getElementById(
+    'page-report-center'
+  ).innerHTML = `
+
+    <button
+      class="back-btn"
+      onclick="navigateTo('patients')"
+    >
+      ← Patients
+    </button>
+
+    <div id="report-center-content">
+
+      Loading...
+
+    </div>
+
+  `;
+}
+
+
+window.filterPatients = function () {
+
+  const value =
+    document
+      .getElementById(
+        'patient-search'
+      )
+      .value
+      .toLowerCase();
+
+  const rows =
+    document.querySelectorAll(
+      '#patients-table tbody tr'
+    );
+
+  rows.forEach(row => {
+
+    const text =
+      row.innerText.toLowerCase();
+
+    row.style.display =
+      text.includes(value)
+        ? ''
+        : 'none';
+  });
+};
+
+
+window.viewReports = async function (
+  patientId
+) {
+  window.currentReportPatientId =
+    patientId;
+
+  const doctorId = localStorage.getItem('doctor_id');
+
+  try {
+
+    const response =
+      await fetch(
+        `http://127.0.0.1:5000/patient_reports/${patientId}?doctor_id=${doctorId}`
+      );
+
+    if (!response.ok) {
+      const errData = await response.json();
+      alert(errData.error || 'Access Denied: You do not have permission to view reports for this patient.');
+      return;
+    }
+
+    const reports =
+      await response.json();
+      const highestScore =
+  Math.max(
+    ...reports.map(
+      r => r.score
+    )
+  );
+
+const lowestScore =
+  Math.min(
+    ...reports.map(
+      r => r.score
+    )
+  );
+      let trend = "Stable";
+let trendColor = "#7dd3fc";
+
+if (reports.length >= 2) {
+
+  const latest =
+    reports[0].score;
+
+  const previous =
+    reports[1].score;
+
+  if (latest < previous) {
+
+    trend = "Improving ↘";
+    trendColor = "#059669";
+  }
+
+  else if (latest > previous) {
+
+    trend = "Worsening ↗";
+    trendColor = "#dc2626";
+  }
+}
+
+    navigateTo('report-center');
+
+    let html = `
+
+<div
+  class="nv-card"
+  style="
+    padding:30px;
+    margin-bottom:25px;
+    border:1px solid rgba(125,211,252,.15);
+    border-radius:20px;
+    background: #ffffff;
+  "
+>
+
+  <div
+    style="
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      flex-wrap:wrap;
+      gap:20px;
+    "
+  >
+
+    <div>
+
+      <h2
+        style="
+          margin-bottom:10px;
+          color:var(--text-1);
+          font-size:2rem;
+        "
+      >
+        Patient Report Center
+      </h2>
+
+      <p
+        style="
+          color:#94a3b8;
+          font-size:1rem;
+        "
+      >
+        Patient ID:
+        ${patientId}
+      </p>
+
+    </div>
+
+    <div
+      style="
+        display:flex;
+        gap:15px;
+        flex-wrap:wrap;
+      "
+    >
+
+      <div
+        style="
+          padding:15px;
+          min-width:140px;
+          border-radius:15px;
+          background:rgba(0,0,0,.04);
+        "
+      >
+        <div style="color:#94a3b8">
+          Assessments
+        </div>
+
+        <div
+          style="
+            font-size:1.8rem;
+            font-weight:bold;
+          "
+        >
+          ${reports.length}
+        </div>
+      </div>
+
+      <div
+        style="
+          padding:15px;
+          min-width:140px;
+          border-radius:15px;
+          background:rgba(0,0,0,.04);
+        "
+      >
+        <div style="color:#94a3b8">
+          Highest Score
+        </div>
+
+        <div
+          style="
+            font-size:1.8rem;
+            font-weight:bold;
+          "
+        >
+          ${highestScore}
+        </div>
+      </div>
+
+      <div
+        style="
+          padding:15px;
+          min-width:140px;
+          border-radius:15px;
+          background:rgba(0,0,0,.04);
+        "
+      >
+        <div style="color:#94a3b8">
+          Lowest Score
+        </div>
+
+        <div
+          style="
+            font-size:1.8rem;
+            font-weight:bold;
+          "
+        >
+          ${lowestScore}
+        </div>
+      </div>
+
+      <div
+        style="
+          padding:15px;
+          min-width:160px;
+          border-radius:15px;
+          background:rgba(0,0,0,.04);
+        "
+      >
+        <div style="color:#94a3b8">
+          Trend
+        </div>
+
+        <div
+          style="
+            color:${trendColor};
+            font-size:1.2rem;
+            font-weight:bold;
+          "
+        >
+          ${trend}
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+
+<div
+  style="
+    padding:15px;
+    min-width:160px;
+    border-radius:15px;
+    background:rgba(0,0,0,.04);
+  "
+>
+  <div style="color:#94a3b8">
+    Latest Severity
+  </div>
+
+  <div
+    style="
+      font-size:1.2rem;
+      font-weight:bold;
+      color:${reports[0]?.severity === 'Severe'
+        ? '#dc2626'
+        : reports[0]?.severity === 'Moderate'
+        ? '#ffb347'
+        : '#66b3ff'};
+    "
+  >
+    ${reports[0]?.severity || 'N/A'}
+  </div>
+</div>
+
+<h2
+  style="
+    margin-bottom:20px;
+  "
+>
+  Assessment History
+</h2>
+
+`;
+
+    if (
+      reports.length === 0
+    ) {
+
+      html += `
+        <div class="nv-card">
+
+          No reports found
+
+        </div>
+      `;
+    }
+
+    reports.forEach(
+      (report,index) => {
+
+      html += `
+
+      <div
+  class="nv-card"
+  style="
+    padding:18px;
+    margin-bottom:18px;
+    border:1px solid rgba(0,0,0,0.15);
+  "
+>
+
+        <div
+  style="
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:15px;
+  "
+>
+
+  <span
+    style="
+      background:rgba(0,191,255,.15);
+      color:#7dd3fc;
+      padding:8px 14px;
+      border-radius:999px;
+      font-size:.9rem;
+      font-weight:600;
+      border:1px solid rgba(125,211,252,.25);
+    "
+  >
+    Assessment #${reports.length-index}
+  </span>
+
+  <span
+    style="
+      color:#888;
+      font-size:.85rem;
+    "
+  >
+    Report ID:
+    ${report.report_id}
+  </span>
+
+</div>
+
+        <p>
+          <b>Date:</b>
+          ${report.date}
+        </p>
+
+        <p>
+          <b>Score:</b>
+          ${report.score}
+        </p>
+
+        <p>
+  <b>Severity:</b>
+
+  <span
+    style="
+      color:
+      ${
+        report.severity === 'Severe'
+          ? '#dc2626'
+          : report.severity === 'Moderate'
+          ? '#ffb347'
+          : '#66b3ff'
+      };
+
+      font-weight:700;
+    "
+  >
+    ${report.severity}
+  </span>
+</p>
+<div
+  style="
+    display:flex;
+    gap:12px;
+    margin-top:15px;
+  "
+>
+
+  <button
+    class="btn-primary"
+    onclick='viewFullReport(${JSON.stringify(report)})'
+  >
+    View Full Report
+  </button>
+
+  <button
+    class="btn-primary"
+    onclick='downloadReport(${JSON.stringify(report)})'
+  >
+    Download
+  </button>
+
+</div>
+
+      </div>
+
+      `;
+    });
+
+    document.getElementById(
+      'report-center-content'
+    ).innerHTML = html;
+
+    
+
+  }
+
+  catch {
+
+    alert(
+      'Failed to load reports'
+    );
+  }
+};
+
+
+window.viewFullReport = function(report){
+
+  const severityColor =
+    report.severity === "Severe"
+      ? "#dc2626"
+      : report.severity === "Moderate"
+      ? "#ffb347"
+      : report.severity === "Mild"
+      ? "#66b3ff"
+      : "#66ff99";
+
+  const interpretation =
+    report.severity === "Severe"
+      ? "Significant schizophrenia severity markers present. Professional psychiatric clinical support is recommended immediately."
+      : report.severity === "Moderate"
+      ? "Moderate schizophrenia severity markers present. Professional psychiatric clinical monitoring and support are recommended."
+      : report.severity === "Mild"
+      ? "Mild schizophrenia severity markers present. Structured daily routines and coping strategies are advised."
+      : "Minimal symptoms detected.";
+
+  const html = `
+
+  <div
+    style="
+      max-width:900px;
+      margin:auto;
+      background:#ffffff;
+      padding:45px;
+      border-radius:20px;
+      box-shadow:0 0 20px rgba(0,0,0,.3);
+    "
+  >
+
+    <h1
+  style="
+    text-align:center;
+    margin-bottom:8px;
+    font-size:2.5rem;
+    letter-spacing:.5px;
+  "
+>
+      NeuroVoice Assessment Report
+    </h1>
+
+    <p
+      style="
+        text-align:center;
+        opacity:.7;
+      "
+    >
+      AI-Based Schizophrenia Severity Assessment Report
+    </p>
+
+    <hr
+  style="
+    border:none;
+    border-top:1px solid rgba(0,0,0,0.22);
+    margin:25px 0;
+  "
+>
+
+    <h2
+  style="
+    margin-top:30px;
+    margin-bottom:15px;
+    color:#7dd3fc;
+    font-size:1.5rem;
+  "
+>
+      Report Information
+    </h2>
+
+    <p>
+      <b>Report ID:</b>
+      NV-${report.report_id}
+    </p>
+
+    <p>
+      <b>Date:</b>
+      ${report.date}
+    </p>
+
+    <hr
+  style="
+    border:none;
+    border-top:1px solid rgba(0,0,0,0.22);
+    margin:25px 0;
+  "
+>
+
+    <h2
+  style="
+    margin-top:30px;
+    margin-bottom:15px;
+    color:#7dd3fc;
+    font-size:1.5rem;
+  "
+>
+      Assessment Results
+    </h2>
+
+    <p>
+      <b>Severity Score:</b>
+      ${report.score}
+    </p>
+
+    <p>
+
+      <b>Severity:</b>
+
+      <span
+  style="
+    color:${severityColor};
+    font-weight:700;
+    font-size:1.1rem;
+  "
+>
+  ${report.severity}
+</span>
+
+    </p>
+
+    <hr
+  style="
+    border:none;
+    border-top:1px solid rgba(0,0,0,0.22);
+    margin:25px 0;
+  "
+>
+
+    <h2
+  style="
+    margin-top:30px;
+    margin-bottom:15px;
+    color:#7dd3fc;
+    font-size:1.5rem;
+  "
+>
+      Clinical Interpretation
+    </h2>
+
+    <p>
+      ${interpretation}
+    </p>
+
+    <hr
+  style="
+    border:none;
+    border-top:1px solid rgba(0,0,0,0.22);
+    margin:25px 0;
+  "
+>
+
+    <h2
+  style="
+    margin-top:30px;
+    margin-bottom:15px;
+    color:#7dd3fc;
+    font-size:1.5rem;
+  "
+>
+      Recommendations
+    </h2>
+
+    <ul
+  style="
+    line-height:2;
+    padding-left:25px;
+  "
+>
+
+      <li>
+        Maintain structured daily routines and sleep hygiene
+      </li>
+
+      <li>
+        Strict medication adherence tracking and reminders
+      </li>
+
+      <li>
+        Reduce stress and engage family and caregiver support
+      </li>
+
+      <li>
+        Follow up with psychiatric professional for clinical recommendations
+      </li>
+
+    </ul>
+
+    <hr
+  style="
+    border:none;
+    border-top:1px solid rgba(0,0,0,0.22);
+    margin:25px 0;
+  "
+>
+
+    <h2
+  style="
+    margin-top:30px;
+    margin-bottom:15px;
+    color:#7dd3fc;
+    font-size:1.5rem;
+  "
+>
+      Disclaimer
+    </h2>
+
+    <p
+      style="
+        opacity:.7;
+      "
+    >
+      This report is generated by NeuroVoice AI
+      and is intended only as a screening tool.
+      It is not a substitute for a professional
+      medical diagnosis.
+    </p>
+
+    <div
+      style="
+        margin-top:70px;
+        display:flex;
+        justify-content:space-between;
+      "
+    >
+
+      <div>
+
+        ___________________
+
+        <br>
+
+        Doctor Signature
+
+      </div>
+
+      <div>
+
+        ___________________
+
+        <br>
+
+        Authorized Stamp
+
+      </div>
+
+    </div>
+
+    <br>
+
+    <button
+      class="btn-primary"
+      onclick="
+        viewReports(
+          window.currentReportPatientId
+        )
+      "
+    >
+      Back to Reports
+    </button>
+
+  </div>
+
+  `;
+
+  document.getElementById(
+    'page-full-report'
+  ).innerHTML = html;
+
+  navigateTo(
+    'full-report'
+  );
+};
+window.downloadReport = function(report){
+
+  const doc = new jsPDF();
+
+  const riskLevel =
+    report.severity === "Severe"
+      ? "HIGH SEVERITY"
+      : report.severity === "Moderate"
+      ? "MODERATE SEVERITY"
+      : report.severity === "Mild"
+      ? "MILD SEVERITY"
+      : "MINIMAL SEVERITY";
+
+  const interpretation =
+    report.severity === "Severe"
+      ? "Significant schizophrenia severity markers present. Professional psychiatric clinical support is recommended immediately."
+      : report.severity === "Moderate"
+      ? "Moderate schizophrenia severity markers present. Professional psychiatric clinical monitoring and support are recommended."
+      : report.severity === "Mild"
+      ? "Mild schizophrenia severity markers present. Structured daily routines and coping strategies are advised."
+      : "Minimal schizophrenia severity markers present. Maintain structured routines and wellness activities.";
+
+  let recommendations = [];
+
+  if(report.severity === "Severe"){
+
+    recommendations = [
+      "Schedule immediate psychiatric clinical evaluation",
+      "Strict medication adherence monitoring",
+      "Activate family, caregiver, and clinical support networks",
+      "Urgent professional clinical follow-up recommendations"
+    ];
+  }
+
+  else if(report.severity === "Moderate"){
+
+    recommendations = [
+      "Practice daily routine structures",
+      "Engage family and caregiver support networks",
+      "Schedule psychiatric clinical follow-up recommendations",
+      "Monitor clinical severity and symptom trends"
+    ];
+  }
+
+  else{
+
+    recommendations = [
+      "Establish consistent sleep hygiene",
+      "Engage in structured wellness activities",
+      "Stay socially active with family support",
+      "Practice daily cognitive focus exercises"
+    ];
+  }
+
+  // =========================
+  // HEADER
+  // =========================
+
+  doc.setFillColor(28,34,65);
+
+  doc.rect(
+    0,
+    0,
+    210,
+    32,
+    "F"
+  );
+
+  doc.setTextColor(255,255,255);
+
+  doc.setFontSize(22);
+
+  doc.text(
+    "NEUROVOICE AI REPORT",
+    20,
+    18
+  );
+
+  doc.setFontSize(10);
+
+  doc.text(
+    "Schizophrenia Severity Prediction System",
+    20,
+    26
+  );
+
+  doc.setTextColor(0,0,0);
+
+  // =========================
+  // REPORT DETAILS
+  // =========================
+
+  doc.setFontSize(11);
+
+  doc.text(
+    `Report ID: NV-${report.report_id}`,
+    20,
+    45
+  );
+
+  doc.text(
+    `Assessment Date: ${report.date}`,
+    20,
+    55
+  );
+
+  // =========================
+  // PATIENT INFO
+  // =========================
+
+  doc.setFillColor(245,245,245);
+
+  doc.roundedRect(
+    20,
+    65,
+    170,
+    25,
+    3,
+    3,
+    "F"
+  );
+
+  doc.setFontSize(13);
+
+  doc.text(
+    "PATIENT INFORMATION",
+    25,
+    76
+  );
+
+  doc.setFontSize(10);
+
+  doc.text(
+    `Patient ID: P-00${report.report_id}`,
+    25,
+    85
+  );
+
+  doc.text(
+    "Doctor: Dr NeuroVoice",
+    120,
+    85
+  );
+
+// =========================
+// SUMMARY CARDS
+// =========================
+
+const cardsY = 100;
+
+// SCORE
+
+doc.setFillColor(240,245,255);
+
+doc.roundedRect(
+  20,
+  cardsY,
+  50,
+  35,
+  3,
+  3,
+  "F"
+);
+
+doc.setTextColor(0,0,0);
+
+doc.setFontSize(10);
+
+doc.text(
+  "SCORE",
+  38,
+  cardsY + 10
+);
+
+doc.setFontSize(18);
+
+doc.text(
+  String(report.score),
+  38,
+  cardsY + 25
+);
+
+
+// SEVERITY
+
+doc.setFillColor(225,240,255);
+
+doc.roundedRect(
+  80,
+  cardsY,
+  50,
+  35,
+  3,
+  3,
+  "F"
+);
+
+doc.setTextColor(0,0,0);
+
+doc.setFontSize(10);
+
+doc.text(
+  "SEVERITY",
+  92,
+  cardsY + 10
+);
+
+doc.setFontSize(14);
+
+doc.text(
+  report.severity,
+  92,
+  cardsY + 25
+);
+
+
+// RISK
+
+doc.setFillColor(235,245,235);
+
+doc.roundedRect(
+  140,
+  cardsY,
+  50,
+  35,
+  3,
+  3,
+  "F"
+);
+
+doc.setTextColor(0,0,0);
+
+doc.setFontSize(10);
+
+doc.text(
+  "RISK",
+  157,
+  cardsY + 10
+);
+
+doc.setFontSize(12);
+
+doc.text(
+  riskLevel,
+  145,
+  cardsY + 25
+);
+
+  // =========================
+  // CLINICAL INTERPRETATION
+  // =========================
+
+  doc.roundedRect(
+    20,
+    145,
+    170,
+    35,
+    3,
+    3
+  );
+
+  doc.setFontSize(13);
+
+  doc.text(
+    "CLINICAL INTERPRETATION",
+    25,
+    155
+  );
+
+  doc.setFontSize(10);
+
+  doc.text(
+    interpretation,
+    25,
+    167,
+    {
+      maxWidth: 155
+    }
+  );
+
+  // =========================
+  // RECOMMENDATIONS
+  // =========================
+
+  doc.roundedRect(
+    20,
+    190,
+    170,
+    55,
+    3,
+    3
+  );
+
+  doc.setFontSize(13);
+
+  doc.text(
+    "RECOMMENDED ACTIONS",
+    25,
+    200
+  );
+
+  doc.setFontSize(10);
+
+  let y = 212;
+
+  recommendations.forEach(item => {
+
+    doc.text(
+      `• ${item}`,
+      28,
+      y
+    );
+
+    y += 10;
+  });
+
+  // =========================
+  // SIGNATURES
+  // =========================
+
+  doc.setFontSize(11);
+
+  doc.text(
+    "Doctor Signature",
+    20,
+    260
+  );
+
+  doc.line(
+    20,
+    264,
+    80,
+    264
+  );
+
+  doc.text(
+    "Authorized Stamp",
+    120,
+    260
+  );
+
+  doc.line(
+    120,
+    264,
+    180,
+    264
+  );
+
+  // =========================
+  // FOOTER
+  // =========================
+
+  doc.setDrawColor(180);
+
+  doc.line(
+    20,
+    275,
+    190,
+    275
+  );
+
+  doc.setFontSize(8);
+
+  doc.text(
+    "Generated by NeuroVoice AI Schizophrenia Severity Prediction System",
+    20,
+    282
+  );
+
+  doc.text(
+    `NV-${report.report_id}`,
+    175,
+    282
+  );
+
+  doc.save(
+    `NeuroVoice_Report_${report.report_id}.pdf`
+  );
+};
+/* ═══════════════════════════════════════════════
+   ANALYSIS
+═══════════════════════════════════════════════ */
+let mediaRecorder=null, recordedChunks=[], isRecording=false, recordingInterval=null;
+
+function renderAnalysis() {
+  document.getElementById('page-analysis').innerHTML = `
+    <button class="back-btn" onclick="navigateTo('home')">← Home</button>
+    <p class="page-label">Step 1 of 2</p>
+    <h2 class="page-heading">Speech-Based Schizophrenia Severity Analysis</h2>
+    <p class="page-sub">Upload or record a speech sample to begin schizophrenia severity assessment.</p>
+    <div id="method-select" class="grid-2">
+      <div class="method-card" onclick="showUpload()">
+        <span class="method-icon">📁</span>
+        <p class="method-title">Upload a File</p>
+        <p class="method-desc">Upload a speech recording for clinical severity analysis.</p>
+        <button class="btn">📁 Upload Speech Sample</button>
+      </div>
+      <div class="method-card" onclick="showRecord()">
+        <span class="method-icon">🎙</span>
+        <p class="method-title">Record Speech Sample</p>
+        <p class="method-desc">Record a speech sample for schizophrenia severity evaluation.</p>
+        <button class="btn">🎙 Record Speech Sample</button>
+      </div>
+    </div>
+    <div id="upload-section" class="input-section">
+      <button class="back-btn" onclick="backToMethod()">← Choose Method</button>
+      <div class="grid-2">
+        <div class="nv-card">
+          <p class="page-label" style="margin-bottom:10px;">Upload Speech Sample</p>
+          <input type="file" id="audio-upload" accept=".wav,.mp3,.ogg,.m4a" style="display:none" onchange="handleUpload(event)" />
+          <div id="dropzone" style="border:2px dashed rgba(67,56,202,.25);border-radius:14px;padding:2.5rem;text-align:center;color:#475569;cursor:pointer;transition:all .2s;"
+            onclick="document.getElementById('audio-upload').click()"
+            ondragover="event.preventDefault();this.style.borderColor='rgba(67,56,202,.6)';this.style.background='rgba(67,56,202,.07)';"
+            ondragleave="this.style.borderColor='rgba(67,56,202,.25)';this.style.background='';"
+            ondrop="handleDrop(event)">
+            <div style="font-size:2.5rem;margin-bottom:.75rem;">📂</div>
+            <p style="margin:0 0 4px;color:var(--text-1);font-weight:500;">Click to browse or drag & drop</p>
+            <p style="font-size:.78rem;color:#94a3b8;margin:0;">WAV, MP3, OGG supported</p>
+          </div>
+          <div id="upload-preview" style="display:none;margin-top:1rem;"></div>
+        </div>
+        <div class="nv-card" style="display:flex;align-items:center;justify-content:center;">
+          <div style="text-align:center;color:#475569;font-size:.88rem;">
+            <div style="font-size:2rem;margin-bottom:.75rem;">📋</div>
+            <p style="color:var(--text-1);font-weight:500;margin-bottom:.75rem;">Tips for best results</p>
+            <ul style="text-align:left;line-height:2;font-size:.83rem;list-style:none;padding:0;">
+              <li>✦ Speak for at least 10–15 seconds</li><li>✦ Use a quiet environment</li>
+              <li>✦ Speak naturally and clearly</li><li>✦ Hold mic 15–20 cm from mouth</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div id="upload-analyze-btn" style="text-align:center;margin-top:2rem;display:none;">
+        <button class="btn-primary" onclick="analyzeAudio()">✦ Analyze Severity Score</button>
+      </div>
+    </div>
+    <div id="record-section" class="input-section">
+      <button class="back-btn" onclick="backToMethod()">← Choose Method</button>
+      <div class="grid-2">
+        <div class="nv-card" style="text-align:center;">
+          <p class="page-label" style="margin-bottom:10px;">Recording Controls</p>
+          <div id="timer-display" style="font-size:2.5rem;font-weight:800;margin:1rem 0 .5rem;background:linear-gradient(135deg,var(--violet-2),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent;">00:00</div>
+          <p style="font-size:.8rem;color:#94a3b8;margin-bottom:1.5rem;">Press record and speak naturally</p>
+          <div id="waveform-anim" class="waveform-bar" style="display:none;margin-bottom:1.5rem;">
+            ${Array.from({length:18},(_,i)=>`<span style="height:${8+Math.random()*30}px;animation-delay:${i*0.08}s;"></span>`).join('')}
+          </div>
+          <div style="display:flex;gap:1rem;justify-content:center;">
+            <button id="rec-btn" class="btn" style="max-width:180px;background:rgba(219,39,119,.1);border-color:rgba(219,39,119,.35);color:#ff6b7a;" onclick="toggleRecording()">⏺ Start Recording</button>
+            <button id="stop-btn" class="btn" style="max-width:180px;display:none;" onclick="stopRecording()">⏹ Stop</button>
+          </div>
+          <div id="rec-status" style="margin-top:1rem;"></div>
+          <div id="record-preview" style="display:none;margin-top:1rem;"></div>
+        </div>
+        <div class="nv-card" style="display:flex;align-items:center;justify-content:center;">
+          <div style="text-align:center;color:#475569;font-size:.88rem;">
+            <div style="font-size:2rem;margin-bottom:.75rem;">🎤</div>
+            <p style="color:var(--text-1);font-weight:500;margin-bottom:.75rem;">Recording Tips</p>
+            <ul style="text-align:left;line-height:2;font-size:.83rem;list-style:none;padding:0;">
+              <li>✦ Allow microphone access when prompted</li><li>✦ Speak naturally — no script needed</li>
+              <li>✦ Speak naturally and continuously</li><li>✦ Stop when you feel you're done</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div id="record-analyze-btn" style="text-align:center;margin-top:2rem;display:none;">
+        <button class="btn-primary" onclick="analyzeAudio()">✦ Analyze Severity Score</button>
+      </div>
+    </div>`;
+}
+
+window.backToMethod=()=>{document.getElementById('upload-section').classList.remove('active');document.getElementById('record-section').classList.remove('active');document.getElementById('method-select').style.display='';};
+window.showUpload=()=>{document.getElementById('method-select').style.display='none';document.getElementById('upload-section').classList.add('active');};
+window.showRecord=()=>{document.getElementById('method-select').style.display='none';document.getElementById('record-section').classList.add('active');};
+window.handleDrop=e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f)processUploadedFile(f);};
+window.handleUpload=e=>{const f=e.target.files[0];if(f)processUploadedFile(f);};
+function processUploadedFile(file){window._audioFile=file;const url=URL.createObjectURL(file);const p=document.getElementById('upload-preview');p.innerHTML=`<p style="font-size:.78rem;color:#94a3b8;margin-bottom:6px;">📎 ${file.name}</p><audio controls src="${url}" style="width:100%;border-radius:8px;"></audio>`;p.style.display='block';document.getElementById('upload-analyze-btn').style.display='block';}
+window.toggleRecording=async()=>{if(isRecording)return;try{const stream=await navigator.mediaDevices.getUserMedia({audio:true});recordedChunks=[];isRecording=true;mediaRecorder=new MediaRecorder(stream);mediaRecorder.ondataavailable=e=>{if(e.data.size>0)recordedChunks.push(e.data);};mediaRecorder.onstop=finishRecording;mediaRecorder.start(100);document.getElementById('rec-btn').style.display='none';document.getElementById('stop-btn').style.display='inline-block';document.getElementById('waveform-anim').style.display='flex';document.getElementById('rec-status').innerHTML=`<div class="recording-indicator"><span class="rec-dot"></span> Recording… speak naturally</div>`;let seconds=0;recordingInterval=setInterval(()=>{seconds++;const m=String(Math.floor(seconds/60)).padStart(2,'0'),s=String(seconds%60).padStart(2,'0');const td=document.getElementById('timer-display');if(td)td.textContent=`${m}:${s}`;},1000);}catch(err){document.getElementById('rec-status').innerHTML=`<div style="padding:.75rem;border-radius:8px;background:rgba(219,39,119,.08);border:1px solid rgba(219,39,119,.3);color:#ff6b7a;font-size:.85rem;">⚠ Microphone access denied.</div>`;}};
+window.stopRecording=()=>{if(mediaRecorder&&isRecording){mediaRecorder.stop();mediaRecorder.stream.getTracks().forEach(t=>t.stop());isRecording=false;clearInterval(recordingInterval);document.getElementById('stop-btn').style.display='none';document.getElementById('waveform-anim').style.display='none';}};
+
+async function convertToWav(blob) {
+  const arrayBuffer = await blob.arrayBuffer();
+  const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+  
+  const numOfChan = audioBuffer.numberOfChannels,
+        length = audioBuffer.length * numOfChan * 2 + 44,
+        buffer = new ArrayBuffer(length),
+        view = new DataView(buffer),
+        channels = [],
+        sampleRate = audioBuffer.sampleRate;
+  
+  let offset = 0,
+      pos = 0;
+  
+  function setUint16(data) { view.setUint16(pos, data, true); pos += 2; }
+  function setUint32(data) { view.setUint32(pos, data, true); pos += 4; }
+  
+  setUint32(0x46464952); // "RIFF"
+  setUint32(length - 8); // file length - 8
+  setUint32(0x45564157); // "WAVE"
+  
+  setUint32(0x20746d66); // "fmt " chunk
+  setUint32(16); // length = 16
+  setUint16(1); // PCM (uncompressed)
+  setUint16(numOfChan);
+  setUint32(sampleRate);
+  setUint32(sampleRate * 2 * numOfChan); // avg. bytes/sec
+  setUint16(numOfChan * 2); // block-align
+  setUint16(16); // 16-bit
+  
+  setUint32(0x61746164); // "data" - chunk
+  setUint32(length - pos - 4); // chunk length
+  
+  for(let i = 0; i < audioBuffer.numberOfChannels; i++)
+    channels.push(audioBuffer.getChannelData(i));
+  
+  while(pos < length) {
+    for(let i = 0; i < numOfChan; i++) {
+      let sample = Math.max(-1, Math.min(1, channels[i][offset]));
+      sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767)|0;
+      view.setInt16(pos, sample, true);
+      pos += 2;
+    }
+    offset++;
+  }
+  
+  return new Blob([buffer], {type: "audio/wav"});
+}
+
+async function finishRecording(){const webmBlob=new Blob(recordedChunks,{type:'audio/webm'});window._audioFile=await convertToWav(webmBlob);const url=URL.createObjectURL(window._audioFile);document.getElementById('rec-status').innerHTML=`<div style="padding:.75rem;border-radius:8px;background:rgba(13,148,136,.07);border:1px solid rgba(13,148,136,.25);color:var(--teal);font-size:.85rem;"> Recording complete</div>`;const p=document.getElementById('record-preview');p.innerHTML=`<audio controls src="${url}" style="width:100%;border-radius:8px;margin-top:.5rem;"></audio>`;p.style.display='block';document.getElementById('rec-btn').style.display='inline-block';document.getElementById('record-analyze-btn').style.display='block';}
+
+window.analyzeAudio = async () => {
+
+  // CHECK AUDIO
+  if (!window._audioFile) {
+    alert('Please upload or record an audio file first');
+    return;
+  }
+
+  try {
+
+    // LOADING STATE
+    const analyzeBtns = document.querySelectorAll(
+      '#upload-analyze-btn button, #record-analyze-btn button'
+    );
+
+    analyzeBtns.forEach(btn => {
+      btn.disabled = true;
+      btn.innerHTML = '⏳ Analyzing...';
+    });
+
+    // FORM DATA
+    const formData = new FormData();
+
+    // FIX FOR RECORDED AUDIO
+    if (window._audioFile instanceof Blob) {
+
+      formData.append(
+        'file',
+        window._audioFile,
+        'recording.wav'
+      );
+
+    } else {
+
+      formData.append(
+        'file',
+        window._audioFile
+      );
+    }
+
+    // API CALL
+    const response = await fetch(
+      'http://127.0.0.1:5000/predict',
+      {
+        method: 'POST',
+        body: formData
+      }
+    );
+
+    // SERVER ERROR
+    if (!response.ok) {
+
+      throw new Error(
+        `Server Error (${response.status})`
+      );
+    }
+
+    // RESPONSE
+    const result = await response.json();
+
+    // BACKEND ERROR
+    if (result.error) {
+
+      throw new Error(result.error);
+    }
+
+// SAVE SCORE
+window._predictionScore =
+  Number(result.score);
+
+// DETERMINE SEVERITY (0-10 SCALE)
+let severity = '';
+
+if (result.score <= 2.5) {
+  severity = 'Minimal';
+}
+else if (result.score <= 5) {
+  severity = 'Mild';
+}
+else if (result.score <= 7.5) {
+  severity = 'Moderate';
+}
+else {
+  severity = 'Severe';
+}
+
+// SAVE REPORT
+const activePatientId = localStorage.getItem('patient_id');
+if (activePatientId) {
+  await fetch(
+    'http://127.0.0.1:5000/save_report',
+    {
+      method: 'POST',
+
+      headers: {
+        'Content-Type':
+          'application/json'
+      },
+
+      body: JSON.stringify({
+
+        patient_id:
+          activePatientId,
+
+        doctor_id:
+          localStorage.getItem(
+            'doctor_id'
+          ),
+
+        score:
+          result.score,
+
+        severity:
+          severity
+      })
+    }
+  );
+} else {
+  localStorage.setItem('pending_score', result.score);
+  localStorage.setItem('pending_severity', severity);
+}
+
+// GO TO RESULTS
+navigateTo('results');
+
+  } catch (error) {
+
+    console.error('Prediction Error:', error);
+
+    // FRIENDLY ERROR MESSAGE
+    if (
+      error.message.includes('Failed to fetch')
+    ) {
+
+      alert(
+        'Backend server is not running.\n\n' +
+        'Start Flask server using:\n' +
+        'python app.py'
+      );
+
+    } else {
+
+      alert(
+        'Analysis Failed:\n' +
+        error.message
+      );
+    }
+
+  } finally {
+
+    // RESET BUTTONS
+    const analyzeBtns = document.querySelectorAll(
+      '#upload-analyze-btn button, #record-analyze-btn button'
+    );
+
+    analyzeBtns.forEach(btn => {
+      btn.disabled = false;
+      btn.innerHTML = '✦ Analyze Severity Score';
+    });
+  }
+};
+
+
+
+
+
+/* ═══════════════════════════════════════════════
+   RESULTS
+═══════════════════════════════════════════════ */
+
+
+function renderResults(){
+
+  const el = document.getElementById('page-results'),
+        score = window._predictionScore;
+
+  // NO SCORE
+  if(score === undefined || score === null){
+
+    el.innerHTML = `
+      <div class="nv-card"
+           style="text-align:center;padding:3rem;margin-top:2rem;">
+
+        <div style="font-size:3rem;margin-bottom:1rem;">📊</div>
+
+        <h3 class="page-heading"
+            style="font-size:1.4rem;">
+            No Analysis Yet
+        </h3>
+
+        <p class="page-sub">
+          Please complete a speech analysis first to view severity results.
+        </p>
+
+        <button class="btn-primary"
+                onclick="navigateTo('analysis')"
+                style="margin-top:1rem;">
+          🎙 Go to Analysis
+        </button>
+
+      </div>
+    `;
+    return;
+  }
+
+// SEVERITY LEVELS (0-10 SCALE)
+
+let level, color, lightColor, bgColor;
+
+if(score <= 2.5){
+
+  level = 'Minimal';
+  color = '#0d9488';
+  lightColor = '#0d9488';
+  bgColor = 'rgba(13,148,136,.1)';
+}
+
+else if(score <= 5){
+
+  level = 'Mild';
+  color = '#d97706';
+  lightColor = '#d97706';
+  bgColor = 'rgba(217,119,6,.1)';
+}
+
+else if(score <= 7.5){
+
+  level = 'Moderate';
+  color = '#ea580c';
+  lightColor = '#ea580c';
+  bgColor = 'rgba(234,88,12,.1)';
+}
+
+else{
+
+  level = 'Severe';
+  color = '#db2777';
+  lightColor = '#db2777';
+  bgColor = 'rgba(219,39,119,.1)';
+}
+
+  // PERCENTAGE
+  const pct = Math.min(
+    (score / 10) * 100,
+    100
+  ).toFixed(0);
+
+  // CLINICAL NOTES
+  const notes = {
+
+    Minimal:
+      'Minimal clinical severity indicators detected. Maintain structured routines and monitor changes.',
+
+    Mild:
+      'Mild clinical severity indicators detected. Structured routines, stress-reduction strategies, and family support are advised.',
+
+    Moderate:
+      'Moderate clinical severity indicators detected. Professional psychiatric consultation and family support follow-up are recommended.',
+
+    Severe:
+      'Significant severity markers present. Professional psychiatric clinical support and medication adherence review are recommended promptly.'
+  };
+
+  // UI
+  el.innerHTML = `
+
+    <button class="back-btn"
+            onclick="navigateTo('analysis')">
+      ← Analysis
+    </button>
+
+    <p class="page-label">
+      Step 2 of 2
+    </p>
+
+    <h2 class="page-heading">
+      Your Analysis Results
+    </h2>
+
+    <div class="grid-2"
+         style="margin-top:1.5rem;align-items:start;">
+
+      <!-- LEFT CARD -->
+      <div class="nv-card"
+           style="text-align:center;padding:2.5rem 1.5rem;">
+
+        <div class="score-ring"
+             style="border-color:${color};
+                    background:${bgColor};">
+
+          <span class="score-val"
+                style="color:${color};">
+
+            ${score}
+
+          </span>
+
+          <span class="score-unit">
+            Severity Score
+          </span>
+
+        </div>
+
+        <div class="severity-badge"
+             style="background:${bgColor};
+                    border:1px solid ${color};
+                    color:${lightColor};">
+
+          ${level} Severity
+
+        </div>
+
+        <p style="color:#475569;
+                  font-size:.82rem;
+                  line-height:1.6;
+                  margin:0 0 1.5rem;">
+
+          Score derived from acoustic markers —
+          MFCCs, ZCR, RMS, and spectral features.
+
+        </p>
+
+        <!-- PROGRESS -->
+        <div class="progress-track">
+
+          <div class="progress-fill"
+               style="width:${pct}%;
+                      background:linear-gradient(
+                        90deg,
+                        ${color},
+                        ${lightColor}
+                      );">
+          </div>
+
+        </div>
+
+        <p style="font-size:.72rem;
+                  color:#94a3b8;
+                  text-align:right;
+                  margin:4px 0 1.5rem;">
+
+          0 → 10 scale
+
+        </p>
+
+        <div style="display:flex;
+                    flex-direction:column;
+                    gap:.75rem;">
+
+          ${!localStorage.getItem('patient_id') ? `
+            <div style="
+              padding: 15px;
+              background: rgba(234,88,12, 0.1);
+              border: 1px dashed #ea580c;
+              border-radius: 12px;
+              margin-bottom: 0.25rem;
+              text-align: center;
+            ">
+              <p style="color: #ea580c; font-weight: 600; margin: 0 0 8px 0; font-size: 0.85rem;">
+                ⚠️ Report Not Saved
+              </p>
+              <p style="color: #475569; margin: 0 0 12px 0; font-size: 0.78rem; line-height: 1.4;">
+                This analysis is not saved to any patient. Register or lookup a patient to save this report.
+              </p>
+              <button class="btn-primary" 
+                      onclick="navigateTo('patients')" 
+                      style="padding: 8px 12px; font-size: 0.8rem; width: 100%; border-radius: 8px; cursor: pointer;">
+                👤 Register / Select Patient
+              </button>
+            </div>
+          ` : ''}
+
+          <button class="btn"
+                  onclick="navigateTo('support')">
+
+            💚 View Personalized Suggestions
+
+          </button>
+
+          <button class="btn"
+                  onclick="resetAnalysis()">
+
+            ↩ New Analysis
+
+          </button>
+
+        </div>
+      </div>
+
+      <!-- RIGHT CARD -->
+      <div>
+
+        <p class="page-label"
+           style="margin-bottom:12px;">
+
+          Severity Spectrum
+
+        </p>
+
+        <div style="background:var(--surface);
+                    border:1px solid var(--border);
+                    border-radius:var(--r-xl);
+                    padding:1.5rem;">
+
+          ${['Minimal','Mild','Moderate','Severe']
+            .map((l,i)=>{
+
+              const cols = [
+                '#0d9488',
+                '#d97706',
+                '#ea580c',
+                '#db2777'
+              ];
+
+              const ranges = [
+                '0–2.5',
+                '2.5–5',
+                '5–7.5',
+                '7.5–10'
+              ];
+
+              const active = l === level;
+
+              return `
+                <div style="
+                  display:flex;
+                  align-items:center;
+                  gap:12px;
+                  margin-bottom:${i<3?'1rem':'0'};
+                ">
+
+                  <div style="
+                    width:10px;
+                    height:10px;
+                    border-radius:50%;
+                    background:${cols[i]};
+                    opacity:${active?1:.3};
+                    box-shadow:${active
+                      ? `0 0 8px ${cols[i]}`
+                      : 'none'};
+                  "></div>
+
+                  <div style="
+                    flex:1;
+                    background:${cols[i]};
+                    height:28px;
+                    border-radius:8px;
+                    opacity:${active?1:.2};
+                    display:flex;
+                    align-items:center;
+                    padding:0 12px;
+                  ">
+
+                    <span style="
+                      font-size:.8rem;
+                      color: var(--text-1);
+                      font-weight:${active?700:400};
+                    ">
+                      ${l}
+                    </span>
+
+                  </div>
+
+                  <span style="
+                    font-size:.75rem;
+                    color:#94a3b8;
+                    width:50px;
+                    text-align:right;
+                  ">
+                    ${ranges[i]}
+                  </span>
+
+                </div>
+              `;
+            }).join('')}
+
+          <!-- POSITION -->
+          <div style="
+            margin-top:1rem;
+            padding-top:1rem;
+            border-top:1px solid var(--border);
+          ">
+
+            <p style="
+              font-size:.75rem;
+              color:#94a3b8;
+              margin-bottom:6px;
+            ">
+              Your position
+            </p>
+
+            <div style="
+              background:var(--surface-2);
+              border-radius:100px;
+              height:8px;
+              position:relative;
+            ">
+
+              <div style="
+                height:8px;
+                width:${pct}%;
+                background:linear-gradient(
+                  90deg,
+                  ${color},
+                  ${lightColor}
+                );
+                border-radius:100px;
+              "></div>
+
+              <div style="
+                position:absolute;
+                top:-4px;
+                left:calc(${pct}% - 8px);
+                width:16px;
+                height:16px;
+                border-radius:50%;
+                background:${lightColor};
+                border:2px solid var(--bg);
+                box-shadow:0 0 10px ${color};
+              "></div>
+
+            </div>
+
+            <div style="
+              display:flex;
+              justify-content:space-between;
+              font-size:.7rem;
+              color:#94a3b8;
+              margin-top:4px;
+            ">
+
+              <span>0</span>
+              <span>2.5</span>
+              <span>5</span>
+              <span>7.5</span>
+              <span>10</span>
+
+            </div>
+
+          </div>
+        </div>
+
+        <!-- CLINICAL NOTE -->
+        <div class="clinical-note"
+             style="border-left-color:${color};">
+
+          <p class="clinical-note-label"
+             style="color:${color};">
+
+            Clinical Note
+
+          </p>
+
+          <p class="clinical-note-text">
+
+            ${notes[level]}
+
+          </p>
+
+        </div>
+
+      </div>
+    </div>
+  `;
+}
+
+
+/* ═══════════════════════════════════════════════
+   SUPPORT
+═══════════════════════════════════════════════ */
+function renderSupport(){
+  document.getElementById('page-support').innerHTML=`
+    <button class="back-btn" onclick="navigateTo('results')">← Results</button>
+    <div class="support-hero">
+      <div style="font-size:3rem;margin-bottom:1rem;">💚</div>
+      <h2 class="page-heading" style="font-size:2rem;">Wellness & Clinical Support Suggestions</h2>
+      <p class="page-sub" style="margin:0 auto;max-width:480px;">AI-powered clinical recommendations, wellness activities, structured routines, and schizophrenia support resources based on your severity assessment.</p>
+    </div>
+    <div id="activity-grid-wrap">
+      <p class="page-label" style="margin-bottom:1rem;">
+  Recommended Activities & Suggestions
+</p>
+
+<div
+  style="
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+    margin-bottom:25px;
+  "
+>
+
+  <button
+    class="btn-primary"
+    onclick="showSuggestions('minimal')"
+  >
+    Minimal
+  </button>
+
+  <button
+    class="btn-primary"
+    onclick="showSuggestions('mild')"
+  >
+    Mild
+  </button>
+
+  <button
+    class="btn-primary"
+    onclick="showSuggestions('moderate')"
+  >
+    Moderate
+  </button>
+
+  <button
+    class="btn-primary"
+    onclick="showSuggestions('severe')"
+  >
+    Severe
+  </button>
+
+</div>
+
+<div id="severitySuggestions"></div>
+
+
+      <div class="activity-grid">
+        ${[['🌸','Mandala Art','Color a mandala with soothing hues','mandala'],
+           ['✏️','Free Drawing','Express yourself on a blank canvas','draw'],
+           ['🧘','Meditate','Box breathing to calm your mind','meditate'],
+           ['🎮','Mind Games','Cognitive exercises and focusing games','games'],
+           ['📓','Journal','Write freely and privately','journal'],
+           ['💬','Clinical Assistant','Talk to your AI clinical support assistant','chat-nav']]
+          .map(([icon,title,desc,type])=>`<div class="activity-btn" onclick="${type==='chat-nav'?`navigateTo('chat')`:`openActivity('${type}')`}"><span class="act-icon">${icon}</span><span class="act-title">${title}</span><span class="act-desc">${desc}</span></div>`).join('')}
+      </div>
+      
+    </div>
+    <div id="activity-panel" style="display:none;"></div>`;
+}
+
+window.openActivity=type=>{
+  document.getElementById('activity-grid-wrap').style.display='none';
+  const panel=document.getElementById('activity-panel');
+  panel.style.display='block'; panel.innerHTML='';
+  window.scrollTo({top:0,behavior:'smooth'});
+  if(type==='mandala')renderMandala(panel);
+  else if(type==='draw')renderFreeDraw(panel);
+  else if(type==='meditate')renderMeditate(panel);
+  else if(type==='games')renderGames(panel);
+  else if(type==='journal')renderJournal(panel);
+};
+window.backToActivities=()=>{document.getElementById('activity-panel').style.display='none';document.getElementById('activity-panel').innerHTML='';document.getElementById('activity-grid-wrap').style.display='block';window.scrollTo({top:0,behavior:'smooth'});};
+
+const BACK_BTN=`<button class="back-btn" onclick="backToActivities()" style="margin-bottom:1.25rem;">← Back to Activities</button>`;
+
+/* MANDALA */
+function renderMandala(panel){panel.innerHTML=`${BACK_BTN}<div class="nv-card"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;flex-wrap:wrap;gap:1rem;"><div><h3 class="page-heading" style="font-size:1.4rem;margin-bottom:4px;">🌸 Mandala Coloring</h3><p style="color:#475569;font-size:.85rem;margin:0;">Click and drag — 8-way symmetry</p></div><button class="tool-btn" onclick="openActivity('mandala')">↺ New</button></div><div class="color-palette" id="mandala-palette"></div><div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;font-size:.83rem;color:#475569;"><span>Brush:</span><input type="range" id="mandala-brush" min="4" max="24" value="10" style="width:120px;"><button class="tool-btn" onclick="clearMandalaCanvas()">🗑 Clear</button><button class="tool-btn" onclick="downloadCanvas('mandala-canvas')">⬇ Save</button></div><canvas id="mandala-canvas" width="700" height="500" style="max-width:100%;"></canvas></div>`;
+const colors=['#a78bfa','#60a5fa','#34d399','#f59e0b','#f87171','#fb923c','#e879f9','#38bdf8','#4ade80','#facc15','#f472b6','#ffffff','#94a3b8'];
+const palette=document.getElementById('mandala-palette');let selectedColor=colors[0];
+colors.forEach((c,i)=>{const sw=document.createElement('div');sw.className='color-swatch'+(i===0?' selected':'');sw.style.background=c;sw.onclick=()=>{document.querySelectorAll('#mandala-palette .color-swatch').forEach(s=>s.classList.remove('selected'));sw.classList.add('selected');selectedColor=c;};palette.appendChild(sw);});
+const canvas=document.getElementById('mandala-canvas'),ctx=canvas.getContext('2d');drawMandalaPattern(ctx,canvas.width,canvas.height);
+let drawing=false;canvas.onmousedown=e=>{drawing=true;dmp(e,canvas,ctx,()=>selectedColor,()=>parseInt(document.getElementById('mandala-brush').value));};canvas.onmousemove=e=>{if(drawing)dmp(e,canvas,ctx,()=>selectedColor,()=>parseInt(document.getElementById('mandala-brush').value));};canvas.onmouseup=canvas.onmouseleave=()=>drawing=false;}
+function dmp(e,canvas,ctx,gc,gs){const r=canvas.getBoundingClientRect(),sx=canvas.width/r.width,sy=canvas.height/r.height,x=(e.clientX-r.left)*sx,y=(e.clientY-r.top)*sy,cx=canvas.width/2,cy=canvas.height/2,rad=gs(),color=gc(),sym=8;ctx.fillStyle=color;for(let i=0;i<sym;i++){const a=(Math.PI*2/sym)*i,dx=x-cx,dy=y-cy,rx=dx*Math.cos(a)-dy*Math.sin(a)+cx,ry=dx*Math.sin(a)+dy*Math.cos(a)+cy;ctx.beginPath();ctx.arc(rx,ry,rad,0,Math.PI*2);ctx.fill();const mx=-dx*Math.cos(a)+dy*Math.sin(a)+cx,my=-dx*Math.sin(a)-dy*Math.cos(a)+cy;ctx.beginPath();ctx.arc(mx,my,rad,0,Math.PI*2);ctx.fill();}}
+function drawMandalaPattern(ctx,w,h){ctx.fillStyle='#f5f7fa';ctx.fillRect(0,0,w,h);const cx=w/2,cy=h/2,layers=7,sym=12;ctx.strokeStyle='rgba(67,56,202,0.3)';ctx.lineWidth=1;for(let l=1;l<=layers;l++){const r=l*(Math.min(cx,cy)/layers);ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.stroke();for(let s=0;s<sym;s++){const a=(Math.PI*2/sym)*s;ctx.beginPath();ctx.moveTo(cx+(r-Math.min(cx,cy)/layers)*Math.cos(a),cy+(r-Math.min(cx,cy)/layers)*Math.sin(a));ctx.lineTo(cx+r*Math.cos(a),cy+r*Math.sin(a));ctx.stroke();if(l%2===0){ctx.beginPath();ctx.arc(cx+(r+r*.2)*Math.cos(a),cy+(r+r*.2)*Math.sin(a),r*.3,0,Math.PI*2);ctx.stroke();}}}ctx.beginPath();ctx.arc(cx,cy,10,0,Math.PI*2);ctx.strokeStyle='rgba(157,143,255,.7)';ctx.stroke();}
+window.clearMandalaCanvas=()=>{const c=document.getElementById('mandala-canvas');if(c)drawMandalaPattern(c.getContext('2d'),c.width,c.height);};
+window.downloadCanvas=id=>{const c=document.getElementById(id);if(!c)return;const a=document.createElement('a');a.download='neurovoice-art.png';a.href=c.toDataURL();a.click();};
+
+/* FREE DRAW */
+function renderFreeDraw(panel){panel.innerHTML=`${BACK_BTN}<div class="nv-card"><h3 class="page-heading" style="font-size:1.4rem;margin-bottom:.5rem;">✏️ Free Drawing</h3><p style="color:#475569;font-size:.85rem;margin-bottom:1.25rem;">Express yourself freely</p><div class="canvas-toolbar"><div class="color-palette" id="draw-palette"></div><div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;"><span style="font-size:.8rem;color:#475569;">Size:</span><input type="range" id="draw-brush" min="2" max="40" value="6" style="width:100px;"><button class="tool-btn" id="eraser-btn" onclick="toggleEraser()">⬜ Eraser</button><button class="tool-btn" onclick="clearDraw()">🗑 Clear</button><button class="tool-btn" onclick="downloadCanvas('draw-canvas')">⬇ Save</button></div></div><canvas id="draw-canvas" width="700" height="480" style="max-width:100%;"></canvas></div>`;
+const colors=['#a78bfa','#60a5fa','#34d399','#f59e0b','#f87171','#fb923c','#e879f9','#38bdf8','#4ade80','#facc15','#f472b6','#ffffff','#94a3b8','#1e293b'];
+const palette=document.getElementById('draw-palette');let selectedColor='#a78bfa',eraserOn=false;
+colors.forEach((c,i)=>{const sw=document.createElement('div');sw.className='color-swatch'+(i===0?' selected':'');sw.style.background=c;sw.onclick=()=>{document.querySelectorAll('#draw-palette .color-swatch').forEach(s=>s.classList.remove('selected'));sw.classList.add('selected');selectedColor=c;eraserOn=false;document.getElementById('eraser-btn').classList.remove('active');};palette.appendChild(sw);});
+window.toggleEraser=()=>{eraserOn=!eraserOn;document.getElementById('eraser-btn').classList.toggle('active',eraserOn);};
+const canvas=document.getElementById('draw-canvas'),ctx=canvas.getContext('2d');ctx.fillStyle='#f5f7fa';ctx.fillRect(0,0,canvas.width,canvas.height);
+let drawing=false,lx=0,ly=0;
+function gp(e){const r=canvas.getBoundingClientRect();return[(e.clientX-r.left)*(canvas.width/r.width),(e.clientY-r.top)*(canvas.height/r.height)];}
+canvas.onmousedown=e=>{drawing=true;[lx,ly]=gp(e);};canvas.onmousemove=e=>{if(!drawing)return;const[x,y]=gp(e),size=parseInt(document.getElementById('draw-brush').value);ctx.strokeStyle=eraserOn?'#f5f7fa':selectedColor;ctx.lineWidth=eraserOn?size*2:size;ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();ctx.moveTo(lx,ly);ctx.lineTo(x,y);ctx.stroke();[lx,ly]=[x,y];};canvas.onmouseup=canvas.onmouseleave=()=>drawing=false;
+window.clearDraw=()=>{ctx.fillStyle='#f5f7fa';ctx.fillRect(0,0,canvas.width,canvas.height);};}
+
+/* MEDITATE */
+function renderMeditate(panel){
+  let brTimer=null;
+  const phases=[{label:'Inhale',duration:4000,scale:1.5},{label:'Hold',duration:4000,scale:1.5},{label:'Exhale',duration:4000,scale:0.8},{label:'Hold',duration:4000,scale:0.8}];
+  panel.innerHTML=`${BACK_BTN}<div class="nv-card" style="text-align:center;max-width:520px;margin:0 auto;"><h3 class="page-heading" style="font-size:1.4rem;margin-bottom:.5rem;">🧘 Box Breathing</h3><p style="color:#475569;font-size:.85rem;margin-bottom:2rem;">Follow the circle — 4 seconds each.</p><div id="breath-circle" class="breath-circle"><span id="breath-label">Press Start</span></div><div id="breath-counter" style="color:#94a3b8;font-size:.85rem;margin-bottom:1.5rem;min-height:24px;"></div><div style="display:flex;gap:8px;justify-content:center;margin-bottom:2rem;">${phases.map((p,i)=>`<div class="breath-step-dot" data-i="${i}">${p.label}</div>`).join('')}</div><div style="display:flex;gap:1rem;justify-content:center;"><button class="btn-primary" id="breath-start-btn" onclick="startBreathing()">▶ Start</button><button class="btn" id="breath-stop-btn" onclick="stopBreathing()" style="width:auto;padding:.6rem 1.5rem;display:none;">⏹ Stop</button></div></div>`;
+  window.startBreathing=()=>{document.getElementById('breath-start-btn').style.display='none';document.getElementById('breath-stop-btn').style.display='inline-block';runBreath(0);};
+  window.stopBreathing=()=>{if(brTimer)clearTimeout(brTimer);const c=document.getElementById('breath-circle');if(c){c.style.transform='scale(1)';document.getElementById('breath-label').textContent='Press Start';document.getElementById('breath-counter').textContent='';document.getElementById('breath-start-btn').style.display='inline-block';document.getElementById('breath-stop-btn').style.display='none';document.querySelectorAll('.breath-step-dot').forEach(d=>{d.style.background='';d.style.color='';d.style.borderColor='';}); }};
+  function runBreath(i){const p=phases[i%4],circle=document.getElementById('breath-circle'),label=document.getElementById('breath-label');if(!circle)return;document.querySelectorAll('.breath-step-dot').forEach(d=>{const idx=parseInt(d.dataset.i);if(idx===i%4){d.style.background='rgba(67,56,202,.15)';d.style.color='var(--violet-2)';d.style.borderColor='var(--violet-2)';}else{d.style.background='';d.style.color='';d.style.borderColor='';}});circle.style.transform=`scale(${p.scale})`;label.textContent=p.label;let rem=p.duration/1000;const counter=document.getElementById('breath-counter');const cd=setInterval(()=>{if(!document.getElementById('breath-counter')){clearInterval(cd);return;}counter.textContent=`${rem}s`;rem--;if(rem<0)clearInterval(cd);},1000);brTimer=setTimeout(()=>runBreath(i+1),p.duration);}
+}
+
+/* GAMES */
+function renderGames(panel){
+  panel.innerHTML=`${BACK_BTN}<div id="games-home"><h3 class="page-heading" style="font-size:1.4rem;margin-bottom:.5rem;">🎮 Mind Games</h3><p style="color:#475569;font-size:.85rem;margin-bottom:1.5rem;">Pick a game to relax</p><div class="games-grid">${[['🃏','Memory Match','Find matching pairs','memory'],['🫧','Bubble Breathing','Pop bubbles in rhythm','breathing'],['📝','Word Puzzle','Guess the 5-letter word','wordle']].map(([icon,title,desc,type])=>`<div class="game-card" onclick="loadGame('${type}')"><div style="font-size:2.5rem;">${icon}</div><p class="game-title">${title}</p><p class="game-desc">${desc}</p></div>`).join('')}</div></div><div id="game-area"></div>`;
+}
+window.loadGame=type=>{document.getElementById('games-home').style.display='none';const area=document.getElementById('game-area');area.innerHTML=`<button class="back-btn" onclick="backToGamesList()" style="margin-bottom:1rem;">← Back to Games</button>`;const wrap=document.createElement('div');area.appendChild(wrap);if(type==='memory')renderMemoryGame(wrap);else if(type==='breathing')renderBubbleGame(wrap);else if(type==='wordle')renderWordleGame(wrap);};
+window.backToGamesList=()=>{document.getElementById('games-home').style.display='';document.getElementById('game-area').innerHTML='';};
+function renderMemoryGame(area){const emojis=['🌸','🌈','⭐','🎵','💎','🦋','🍀','🎯'];let cards=[...emojis,...emojis].sort(()=>Math.random()-.5),flipped=[],matched=[],locked=false,moves=0;area.innerHTML=`<div class="nv-card" style="text-align:center;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;"><h4 style="font-family:var(--font-display);font-size:1.1rem;">🃏 Memory Match</h4><div style="display:flex;gap:.5rem;"><span id="moves-count" style="font-size:.85rem;color:#475569;">Moves: 0</span><button class="tool-btn" onclick="loadGame('memory')">↺ New</button></div></div><div class="memory-grid" id="mem-grid"></div><div id="mem-status" style="color:var(--teal);font-size:.9rem;margin-top:1rem;min-height:24px;"></div></div>`;const grid=document.getElementById('mem-grid');cards.forEach((emoji)=>{const card=document.createElement('div');card.className='mem-card';card.dataset.emoji=emoji;card.innerHTML=`<span class="card-face">${emoji}</span>`;card.onclick=()=>{if(locked||card.classList.contains('flipped')||card.classList.contains('matched'))return;card.classList.add('flipped');flipped.push(card);if(flipped.length===2){locked=true;moves++;document.getElementById('moves-count').textContent=`Moves: ${moves}`;const[a,b]=flipped;if(a.dataset.emoji===b.dataset.emoji){a.classList.add('matched');b.classList.add('matched');matched.push(a,b);flipped=[];locked=false;if(matched.length===cards.length)document.getElementById('mem-status').textContent=`🎉 Won in ${moves} moves!`;}else{setTimeout(()=>{a.classList.remove('flipped');b.classList.remove('flipped');flipped=[];locked=false;},900);}}};grid.appendChild(card);});}
+function renderBubbleGame(area){area.innerHTML=`<div class="nv-card" style="text-align:center;"><h4 style="font-family:var(--font-display);font-size:1.1rem;margin-bottom:.5rem;">🫧 Bubble Breathing</h4><p style="color:#475569;font-size:.83rem;margin-bottom:1rem;">Click the bubble as it breathes with you.</p><div style="height:280px;display:flex;align-items:center;justify-content:center;"><div id="game-bubble" style="width:100px;height:100px;border-radius:50%;background:radial-gradient(circle at 35% 35%,rgba(0,0,0,.2),rgba(67,56,202,.3));border:1px solid rgba(67,56,202,.5);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform 3s ease-in-out;"><span style="font-size:.78rem;color:rgba(0,0,0,.8);" id="bubble-label">Inhale</span></div></div><div id="bubble-score" style="color:#475569;font-size:.85rem;">Score: 0</div></div>`;let score=0,growing=true;const bubble=document.getElementById('game-bubble'),lbl=document.getElementById('bubble-label');function cycle(){if(!document.getElementById('game-bubble'))return;bubble.style.transform=growing?'scale(2)':'scale(0.75)';lbl.textContent=growing?'Inhale':'Exhale';growing=!growing;setTimeout(cycle,3500);}bubble.onclick=()=>{score++;document.getElementById('bubble-score').textContent=`Score: ${score} 🌟`;bubble.style.boxShadow='0 0 40px rgba(67,56,202,.5)';setTimeout(()=>{if(bubble)bubble.style.boxShadow='';},400);};cycle();}
+function renderWordleGame(area){const words=['PEACE','SMILE','LIGHT','GRACE','BLOOM','CHILL','DANCE','GLEAM','HONEY'];const target=words[Math.floor(Math.random()*words.length)];let cr=0,cc=0,cg=[],over=false;area.innerHTML=`<div class="nv-card" style="text-align:center;max-width:420px;margin:0 auto;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;"><h4 style="font-family:var(--font-display);font-size:1.1rem;">📝 Word Puzzle</h4><button class="tool-btn" onclick="loadGame('wordle')">↺ New</button></div><p style="font-size:.8rem;color:#94a3b8;margin-bottom:1rem;">🟩 right &nbsp;🟨 wrong place &nbsp;⬛ not in word</p><div class="puzzle-grid" id="wordle-grid">${Array.from({length:30},()=>`<div class="puzzle-cell"></div>`).join('')}</div><div id="wordle-msg" style="min-height:28px;margin:.75rem 0;font-size:.9rem;color:#475569;"></div><div class="word-keyboard" id="wordle-keys"></div></div>`;const rows=['QWERTYUIOP','ASDFGHJKL','ZXCVBNM'],kd=document.getElementById('wordle-keys');rows.forEach(row=>{row.split('').forEach(ch=>{const btn=document.createElement('button');btn.className='key-btn';btn.dataset.key=ch;btn.textContent=ch;btn.onclick=()=>hk(ch);kd.appendChild(btn);});kd.appendChild(Object.assign(document.createElement('div'),{style:'width:100%;height:0;'}));});['ENTER','⌫'].forEach(k=>{const btn=document.createElement('button');btn.className='key-btn';btn.textContent=k;btn.style.padding='.5rem 1rem';btn.onclick=()=>hk(k);kd.appendChild(btn);});document.onkeydown=e=>{if(!document.getElementById('wordle-grid')){document.onkeydown=null;return;}if(e.key==='Enter')hk('ENTER');else if(e.key==='Backspace')hk('⌫');else if(/^[a-zA-Z]$/.test(e.key))hk(e.key.toUpperCase());};function getCells(){return document.querySelectorAll('#wordle-grid .puzzle-cell');}function hk(k){if(over||cr>=6)return;const cells=getCells();if(k==='⌫'){if(cc>0){cc--;cg.pop();cells[cr*5+cc].textContent='';}}else if(k==='ENTER'){if(cc<5){document.getElementById('wordle-msg').textContent='Not enough letters';return;}sub(cells);}else if(cc<5){cells[cr*5+cc].textContent=k;cg.push(k);cc++;}}function sub(cells){const guess=cg.join(''),ta=target.split(''),result=Array(5).fill('absent');guess.split('').forEach((ch,i)=>{if(ch===ta[i])result[i]='correct';});guess.split('').forEach((ch,i)=>{if(result[i]!=='correct'&&ta.includes(ch))result[i]='present';});result.forEach((r,i)=>{cells[cr*5+i].classList.add(r);const kb=document.querySelector(`[data-key="${guess[i]}"]`);if(kb){if(r==='correct')kb.style.background='rgba(13,148,136,.2)';else if(r==='present'&&kb.style.background!=='rgba(13,148,136,.2)')kb.style.background='rgba(217,119,6,.2)';else if(r==='absent')kb.style.opacity='.4';}});if(guess===target){document.getElementById('wordle-msg').innerHTML=`<span style="color:var(--teal)">🎉 Brilliant!</span>`;over=true;document.onkeydown=null;return;}cr++;cc=0;cg=[];if(cr>=6){document.getElementById('wordle-msg').innerHTML=`<span style="color:var(--danger)">Word was <b>${target}</b></span>`;over=true;document.onkeydown=null;}}}
+
+/* JOURNAL */
+function renderJournal(panel){panel.innerHTML=`${BACK_BTN}<div class="nv-card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem;"><div><h3 class="page-heading" style="font-size:1.4rem;margin-bottom:4px;">📓 My Journal</h3><p style="color:#475569;font-size:.85rem;margin:0;">Your words, your space. Never stored.</p></div><div style="display:flex;gap:.5rem;"><button class="tool-btn" onclick="clearJournal()">🗑 Clear</button><button class="tool-btn" onclick="downloadJournal()">⬇ Save .txt</button></div></div><div style="margin-bottom:1rem;display:flex;gap:.5rem;flex-wrap:wrap;">${['How is my daily routine today?','Did I follow my medication schedule?','What daily structure goals did I achieve?','What coping strategies can I use right now?'].map(p=>`<button class="tool-btn" onclick="addPrompt('${p}')">${p}</button>`).join('')}</div><textarea id="journal-text" style="width:100%;min-height:320px;font-size:.95rem;line-height:1.7;padding:1.25rem;resize:vertical;" placeholder="Start writing… Let your thoughts flow freely."></textarea><div style="display:flex;justify-content:space-between;margin-top:.75rem;"><span id="word-count" style="font-size:.78rem;color:#94a3b8;">0 words</span><span style="font-size:.78rem;color:#94a3b8;">Private · Never stored</span></div></div>`;const ta=document.getElementById('journal-text');ta.addEventListener('input',()=>{const w=ta.value.trim()?ta.value.trim().split(/\s+/).length:0;document.getElementById('word-count').textContent=`${w} word${w!==1?'s':''}`;});window.addPrompt=p=>{ta.value+=(ta.value?'\n\n':'')+p+'\n';ta.focus();};window.clearJournal=()=>{ta.value='';document.getElementById('word-count').textContent='0 words';};window.downloadJournal=()=>{const blob=new Blob([ta.value],{type:'text/plain'});const a=document.createElement('a');a.download='my-journal.txt';a.href=URL.createObjectURL(blob);a.click();};}
+
+/* ═══════════════════════════════════════════════
+   CHAT — FINAL (Quick Starters + AI + Keywords)
+═══════════════════════════════════════════════ */
+let chatHistory=[], chatStarted=false;
+
+function renderChat(){
+  const el=document.getElementById('page-chat');
+  el.innerHTML=`
+  <style>
+    .chat-page-wrap{display:block;height:calc(100vh - 58px);margin:0 auto;max-width:900px;}
+    .chat-main{display:flex;flex-direction:column;height:100%;overflow:hidden;background:var(--bg);}
+    .chat-messages-wrap{flex:1;overflow-y:auto;padding:2rem 0;margin-top:15px;}
+    .chat-msg-row{width:100%;padding:.35rem 0;}
+    .chat-msg-inner{max-width:680px;margin:0 auto;padding:.5rem 1.5rem;display:flex;gap:14px;}
+    .chat-msg-row.user .chat-msg-inner{flex-direction:row-reverse;}
+
+    .chat-role-icon{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;}
+    .chat-role-icon.ai{background:linear-gradient(135deg,var(--violet),var(--pink));}
+    .chat-role-icon.user{background:var(--surface-3);}
+
+    .chat-msg-text{flex:1;font-size:.925rem;line-height:1.7;color:var(--text-1);}
+
+    .chat-input-area{padding:1rem;border-top:1px solid var(--border);}
+    .chat-input-wrap{max-width:680px;margin:0 auto;}
+    .chat-input-box{
+  display:flex;
+  gap:.75rem;
+  background:rgba(0,0,0,.04);
+  border:1px solid rgba(67,56,202,.2);
+  border-radius:18px;
+  padding:.85rem;
+}
+
+    .chat-textarea{flex:1;background:transparent;border:none;outline:none;color:var(--text-1);}
+    .chat-send-btn{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--violet),rgba(8,145,178,.7));border:none;color: var(--text-1);cursor:pointer;}
+
+    /* QUICK STARTERS */
+    .chat-quick-container{
+      max-width:680px;
+      margin:0 auto 10px;
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      padding:0 1.5rem;
+    }
+
+    .chat-quick-btn{
+  background:rgba(67,56,202,0.08);
+  border:1px solid rgba(67,56,202,0.2);
+  color:var(--text-1);
+  padding:10px 14px;
+  border-radius:14px;
+  font-size:0.85rem;
+  cursor:pointer;
+  transition:.25s;
+}
+
+.chat-quick-btn:hover{
+  transform:translateY(-2px);
+  background:rgba(67,56,202,.2);
+}
+
+    .chat-quick-btn:hover{
+      background:rgba(67,56,202,0.15);
+      color:var(--text-1);
+    }
+  </style>
+
+  <div class="chat-page-wrap">
+    <div class="chat-main">
+
+  <div
+    style="
+      max-width:680px;
+      margin:20px auto 0;
+      padding:20px;
+      border:1px solid rgba(67,56,202,.2);
+      border-radius:18px;
+      background:rgba(0,0,0,.04);
+    "
+  >
+
+    <h2
+      style="
+        margin:0 0 10px;
+        color: var(--text-1);
+      "
+    >
+      💙 NeuroVoice Clinical Severity Assistant
+    </h2>
+
+    <p
+      style="
+        margin:0;
+        color:#475569;
+        line-height:1.7;
+      "
+    >
+      Clinical severity assistant for clinicians. Ask me about speech biomarkers,
+      schizophrenia severity scoring (0-10 scale), or the operation of the NeuroVoice application.
+    </p>
+
+  </div>
+
+  <div class="chat-messages-wrap" id="chat-messages"></div>
+
+  <div
+  style="
+    max-width:680px;
+    margin:0 auto 15px;
+    padding:0 1.5rem;
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+  "
+>
+
+  <button class="chat-quick-btn" onclick="sendQuick('How does the voice analysis work?')">
+    🎤 Voice Analysis
+  </button>
+
+  <button class="chat-quick-btn" onclick="sendQuick('Explain the schizophrenia severity scale')">
+    📊 Severity Scoring
+  </button>
+
+  <button class="chat-quick-btn" onclick="sendQuick('What acoustic features are extracted?')">
+    🧠 Acoustic Features
+  </button>
+
+  <button class="chat-quick-btn" onclick="sendQuick('How is patient privacy maintained?')">
+    🔒 Patient Privacy
+  </button>
+
+</div>
+      <!-- QUICK STARTERS -->
+      <div class="chat-quick-container">
+        ${[
+          "How does the Wav2Vec2 model make predictions?",
+          "What datasets was the model trained on?",
+          "How to register and view patient reports?",
+          "How are voice features like MFCCs and ZCR used?",
+          "Can you explain the severity levels (Minimal to Severe)?",
+          "How does this app assist clinical diagnosis?"
+        ].map(text=>`
+          <button class="chat-quick-btn" onclick="sendQuick('${text.replace(/'/g,"\\'")}')">
+            💬 ${text}
+          </button>
+        `).join('')}
+      </div>
+
+      <div class="chat-input-area">
+        <div class="chat-input-wrap">
+          <div class="chat-input-box">
+            <textarea class="chat-textarea" id="chat-input"
+              placeholder="Type your message..."
+              onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage();}">
+            </textarea>
+
+            <button class="chat-send-btn" id="send-btn" onclick="sendMessage()">➤</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+
+  if(!chatStarted){
+    chatHistory=[];
+    appendMsg('assistant',"Hello Clinician! I'm your clinical severity assistant. Ask me anything about schizophrenia severity prediction, speech biomarkers, or how the NeuroVoice application works.");
+    chatStarted=true;
+  } else {
+    chatHistory.forEach(({role,text})=>renderMsg(role,text));
+  }
+}
+
+function appendMsg(role,text){
+  chatHistory.push({role,text});
+  renderMsg(role,text);
+  const m=document.getElementById('chat-messages');
+  if(m) m.scrollTop=m.scrollHeight;
+}
+
+function renderMsg(role,text){
+  const msgs=document.getElementById('chat-messages'); if(!msgs)return;
+  const isAI=role==='assistant';
+  const row=document.createElement('div');
+  row.className=`chat-msg-row ${role}`;
+  row.innerHTML=`
+    <div class="chat-msg-inner">
+      <div class="chat-role-icon ${isAI?'ai':'user'}">${isAI?'🤍':'👤'}</div>
+      <div class="chat-msg-text">${text.replace(/\n/g,'<br>')}</div>
+    </div>`;
+  msgs.appendChild(row);
+  msgs.scrollTop=msgs.scrollHeight;
+}
+
+function showTyping(){
+  const msgs=document.getElementById('chat-messages'); if(!msgs)return;
+  const row=document.createElement('div');
+  row.className='chat-msg-row assistant'; row.id='typing-indicator';
+  row.innerHTML=`
+    <div class="chat-msg-inner">
+      <div class="chat-role-icon ai">🤍</div>
+      <div>Typing...</div>
+    </div>`;
+  msgs.appendChild(row);
+}
+
+function hideTyping(){
+  const t=document.getElementById('typing-indicator');
+  if(t) t.remove();
+}
+
+window.sendQuick=text=>{
+  const inp=document.getElementById('chat-input');
+  if(inp){inp.value=text;}
+  sendMessage();
+};
+
+window.sendMessage=async()=>{
+  const input=document.getElementById('chat-input');
+  if(!input) return;
+
+  const text=input.value.trim();
+  if(!text) return;
+
+  input.value='';
+  appendMsg('user',text);
+  showTyping();
+
+  try {
+    // Map chatHistory to backend structure
+    const history = chatHistory.slice(0, -1).map(h => ({
+      role: h.role,
+      text: h.text
+    }));
+
+    const response = await fetch('http://127.0.0.1:5000/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        message: text,
+        history: history
+      })
+    });
+
+    const result = await response.json();
+    hideTyping();
+    if (result.response) {
+      appendMsg('assistant', result.response);
+    } else if (result.error) {
+      appendMsg('assistant', `⚠️ Error: ${result.error}`);
+    } else {
+      appendMsg('assistant', '⚠️ Received invalid response from backend.');
+    }
+  } catch (error) {
+    hideTyping();
+    appendMsg('assistant', '⚠️ Failed to connect to the chatbot server.');
+  }
+}; 
+
+
+function renderLogin() {
+  document.getElementById('page-login').innerHTML = `
+    <div class="nv-card" style="max-width:500px;margin:auto;">
+      <h2>Login</h2>
+
+      <input
+        id="login-user"
+        type="text"
+        placeholder="Username"
+        style="
+          width:100%;
+          padding:12px;
+          margin-bottom:10px;
+          border-radius:10px;
+        "
+      />
+
+      <input
+        id="login-pass"
+        type="password"
+        placeholder="Password"
+        class="chat-input"
+        style="margin-bottom:15px;"
+      />
+
+      <button
+        class="btn-primary"
+        onclick="loginUser()"
+      >
+        Login
+      </button>
+
+      <p id="login-msg" style="margin-top:10px;color:red;"></p>
+
+      <p style="margin-top: 15px; font-size: 0.9rem; color: #94a3b8;">
+        Don't have an account? 
+        <a href="#" onclick="event.preventDefault(); navigateTo('register');" style="color: #0d9488; text-decoration: none; font-weight: 600;">Register</a>
+      </p>
+    </div>
+  `;
+}
+
+
+function renderRegister() {
+
+  document.getElementById(
+    'page-register'
+  ).innerHTML = `
+
+    <div
+      class="nv-card"
+      style="
+        max-width:500px;
+        margin:auto;
+      "
+    >
+
+      <h2>Doctor Registration</h2>
+
+      <input
+        id="reg-name"
+        placeholder="Doctor Name"
+        style="
+          width:100%;
+          padding:12px;
+          margin-bottom:10px;
+        "
+      />
+
+      <input
+        id="reg-user"
+        placeholder="Username"
+        style="
+          width:100%;
+          padding:12px;
+          margin-bottom:10px;
+        "
+      />
+
+      <input
+        id="reg-pass"
+        type="password"
+        placeholder="Password"
+        style="
+          width:100%;
+          padding:12px;
+          margin-bottom:15px;
+        "
+      />
+
+      <button
+        class="btn-primary"
+        onclick="registerUser()"
+      >
+        Register
+      </button>
+
+      <p
+        id="register-msg"
+        style="
+          margin-top:10px;
+        "
+      ></p>
+
+      <p style="margin-top: 15px; font-size: 0.9rem; color: #94a3b8;">
+        Already have an account? 
+        <a href="#" onclick="event.preventDefault(); navigateTo('login');" style="color: #0d9488; text-decoration: none; font-weight: 600;">Login</a>
+      </p>
+  </div>
+  `;
+}
+
+
+window.loginUser = async function () {
+
+  const username =
+    document.getElementById(
+      'login-user'
+    ).value;
+
+  const password =
+    document.getElementById(
+      'login-pass'
+    ).value;
+
+  try {
+
+    const response = await fetch(
+      'http://127.0.0.1:5000/login',
+      {
+        method: 'POST',
+
+        headers: {
+          'Content-Type':
+            'application/json'
+        },
+
+        body: JSON.stringify({
+          username,
+          password
+        })
+      }
+    );
+
+    const result =
+      await response.json();
+
+    if (result.success) {
+
+      localStorage.setItem(
+        'loggedIn',
+        'true'
+      );
+
+      localStorage.setItem(
+        'doctor_id',
+        result.doctor_id
+      );
+
+      localStorage.setItem(
+        'doctor_name',
+        result.doctor_name
+      );
+
+      updateNavbar();
+      navigateTo('analysis');
+
+    } else {
+
+      document.getElementById(
+        'login-msg'
+      ).textContent =
+        result.message;
+    }
+
+  } catch (error) {
+
+    document.getElementById(
+      'login-msg'
+    ).textContent =
+      'Backend connection failed';
+  }
+};
+
+
+window.registerUser = async function () {
+
+  const name =
+    document.getElementById(
+      'reg-name'
+    ).value;
+
+  const username =
+    document.getElementById(
+      'reg-user'
+    ).value;
+
+  const password =
+    document.getElementById(
+      'reg-pass'
+    ).value;
+
+  try {
+
+    const response =
+      await fetch(
+        'http://127.0.0.1:5000/register',
+        {
+          method: 'POST',
+
+          headers: {
+            'Content-Type':
+              'application/json'
+          },
+
+          body: JSON.stringify({
+            name,
+            username,
+            password
+          })
+        }
+      );
+
+    const result =
+      await response.json();
+
+    if (result.success) {
+
+      alert(
+        'Doctor Registered Successfully'
+      );
+
+      navigateTo('login');
+
+    } else {
+
+      document.getElementById(
+        'register-msg'
+      ).textContent =
+        result.message;
+    }
+
+  } catch {
+
+    document.getElementById(
+      'register-msg'
+    ).textContent =
+      'Backend connection failed';
+  }
+};
+
+
+window.logoutUser = function () {
+
+  if (!confirm('Are you sure you want to logout?')) {
+    return;
+  }
+
+  localStorage.clear();
+
+  alert('Logged out successfully');
+
+  updateNavbar();
+
+  setTimeout(() => {
+    navigateTo('home');
+  }, 100);
+};
+
+
+window.resetAnalysis = function () {
+  window._predictionScore = null;
+  window._audioFile = null;
+  localStorage.removeItem('patient_id');
+  localStorage.removeItem('patient_code');
+  localStorage.removeItem('pending_score');
+  localStorage.removeItem('pending_severity');
+  navigateTo('analysis');
+};
+
+
+
+/* ═══════════════════════════════════════════════
+   BOOT
+═══════════════════════════════════════════════ */
+ 
+document.addEventListener('DOMContentLoaded',()=>{
+  updateNavbar();
+  navigateTo('home');   // 🔥 IMPORTANT
+});
+
+
+
+window.showSuggestions = function(
+  severity
+){
+
+  const doctorName =
+    localStorage.getItem(
+      'doctorName'
+    ) || 'Not Assigned';
+
+  let html = '';
+
+  if(
+    severity === 'minimal'
+  ){
+html = `
+
+<div
+  class="nv-card"
+  style="
+    border:1px solid rgba(5,150,105,.3);
+    border-left:6px solid #059669;
+    padding:25px;
+    margin-bottom:35px;
+  "
+>
+
+  <div
+    style="
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:20px;
+      flex-wrap:wrap;
+    "
+  >
+
+    <h2
+      style="
+        color:#059669;
+        margin:0;
+      "
+    >
+      ✅ Minimal Severity
+    </h2>
+
+    <span
+      style="
+        background:rgba(5,150,105,.15);
+        color:#059669;
+        padding:8px 14px;
+        border-radius:999px;
+        font-weight:bold;
+      "
+    >
+      MINIMAL
+    </span>
+
+  </div>
+
+  <h3
+    style="
+      color:#7dd3fc;
+      margin-bottom:15px;
+    "
+  >
+    Recommended Actions
+  </h3>
+
+  <ul
+    style="
+      line-height:2;
+      padding-left:25px;
+    "
+  >
+    <li>Maintain structured daily routines</li>
+    <li>Follow medication adherence schedule</li>
+    <li>Stay connected with family and caregiver support</li>
+    <li>Practice cognitive wellness activities</li>
+    <li>Maintain consistent sleep hygiene (7–8 hours)</li>
+  </ul>
+
+</div>
+
+`;
+  }
+
+  else if(
+    severity === 'mild'
+  ){
+html = `
+
+<div
+  class="nv-card"
+  style="
+    border:1px solid rgba(102,179,255,.3);
+    border-left:6px solid #66b3ff;
+    padding:25px;
+    margin-bottom:35px;
+  "
+>
+
+  <div
+    style="
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:20px;
+      flex-wrap:wrap;
+    "
+  >
+
+    <h2
+      style="
+        color:#66b3ff;
+        margin:0;
+      "
+    >
+      ℹ Mild Severity
+    </h2>
+
+    <span
+      style="
+        background:rgba(102,179,255,.15);
+        color:#66b3ff;
+        padding:8px 14px;
+        border-radius:999px;
+        font-weight:bold;
+      "
+    >
+      MILD
+    </span>
+
+  </div>
+
+  <h3
+    style="
+      color:#7dd3fc;
+      margin-bottom:15px;
+    "
+  >
+    Recommended Actions
+  </h3>
+
+  <ul
+    style="
+      line-height:2;
+      padding-left:25px;
+    "
+  >
+    <li>Structured daily routines</li>
+    <li>Stress reduction techniques</li>
+    <li>Symptom and medication tracking journal</li>
+    <li>Cognitive wellness activities</li>
+    <li>Sleep hygiene and family support engagement</li>
+  </ul>
+
+</div>
+
+`;
+  }
+
+  else if(
+    severity === 'moderate'
+  ){
+html = `
+
+<div
+  class="nv-card"
+  style="
+    border:1px solid rgba(217,119,6,.3);
+    border-left:6px solid #ffb347;
+    padding:25px;
+    margin-bottom:35px;
+  "
+>
+
+  <div
+    style="
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:20px;
+      flex-wrap:wrap;
+    "
+  >
+
+    <h2
+      style="
+        color:#ffb347;
+        margin:0;
+      "
+    >
+      ⚠ Moderate Severity
+    </h2>
+
+    <span
+      style="
+        background:rgba(217,119,6,.15);
+        color:#ffb347;
+        padding:8px 14px;
+        border-radius:999px;
+        font-weight:bold;
+      "
+    >
+      MODERATE
+    </span>
+
+  </div>
+
+  <h3
+    style="
+      color:#7dd3fc;
+      margin-bottom:15px;
+    "
+  >
+    Recommended Actions
+  </h3>
+
+  <ul
+    style="
+      line-height:2;
+      padding-left:25px;
+    "
+  >
+    <li>Professional psychiatric follow-up guidance</li>
+    <li>Daily structured routine adherence</li>
+    <li>Family and caregiver support engagement</li>
+    <li>Medication adherence and symptom tracking</li>
+    <li>Schedule psychiatric clinical consultation</li>
+  </ul>
+
+</div>
+
+`;
+  }
+
+  else if(
+    severity === 'severe'
+  ){
+
+   html = `
+
+<div
+  class="nv-card"
+  style="
+    border:1px solid rgba(220,38,38,.4);
+    border-left:6px solid #dc2626;
+    padding:25px;
+    margin-bottom:35px;
+  "
+>
+
+  <div
+    style="
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:20px;
+      flex-wrap:wrap;
+    "
+  >
+
+    <h2
+      style="
+        color:#dc2626;
+        margin:0;
+      "
+    >
+      ⚠ Severe Severity Detected
+    </h2>
+
+    <span
+      style="
+        background:rgba(220,38,38,.15);
+        color:#dc2626;
+        padding:8px 14px;
+        border-radius:999px;
+        font-weight:bold;
+      "
+    >
+      SEVERE
+    </span>
+
+  </div>
+
+  <div
+    style="
+      margin-bottom:20px;
+      padding:15px;
+      border-radius:12px;
+      background:rgba(0,0,0,.04);
+    "
+  >
+
+    <p style="margin:0;">
+      <b>Assigned Doctor:</b>
+      Dr. ${doctorName}
+    </p>
+
+  </div>
+
+  <h3
+    style="
+      margin-bottom:15px;
+      color:#7dd3fc;
+    "
+  >
+    Recommended Actions
+  </h3>
+
+  <ul
+    style="
+      line-height:2;
+      padding-left:25px;
+    "
+  >
+
+    <li>
+      Schedule immediate psychiatric evaluation
+    </li>
+
+    <li>
+      Strict medication adherence monitoring
+    </li>
+
+    <li>
+      Activate family and caregiver support networks
+    </li>
+
+    <li>
+      Continuous clinical severity monitoring
+    </li>
+
+    <li>
+      Urgent professional psychiatric intervention if needed
+    </li>
+
+  </ul>
+
+</div>
+
+`;
+  }
+
+  document.getElementById(
+    'severitySuggestions'
+  ).innerHTML = html;
+}
