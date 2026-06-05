@@ -237,7 +237,7 @@ async function analyzeAudio() {
     const formData = new FormData();
     formData.append('file', window._audioFile);
 
-    const response = await fetch('https://schizospeech.onrender.com', {
+    const response = await fetch('https://schizospeech.onrender.com/predict', {
       method: 'POST',
       body: formData
     });
